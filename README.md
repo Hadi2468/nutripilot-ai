@@ -25,7 +25,7 @@ The application uses an LLM to generate personalized responses based on user-pro
 
 ## 🔀 Architecture
 
-![Architecture](assets/architecture.png) 
+![Architecture](assets/architecture.png)
 
 ---
 
@@ -139,7 +139,9 @@ nutripilot-ai/
 ├── .gitignore
 ├── .env.example
 ├── main.py
-└── requirements.txt
+├── requirements.txt
+└── assets/
+    └── architecture.png
 ```
 
 The project will be progressively refactored into a modular production-oriented architecture.
@@ -261,9 +263,3 @@ This project demonstrates practical experience with:
 * Software testing
 * CI/CD
 * Production-oriented AI system design
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
