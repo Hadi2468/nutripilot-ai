@@ -21,8 +21,9 @@ NutriPilot AI allows users to:
 
 The application uses an LLM to generate personalized responses based on user-provided information.
 
----
-##🔀 Architecture
+--- 
+
+## 🔀 Architecture
 
 ![Architecture](assets/architecture.png) 
 
