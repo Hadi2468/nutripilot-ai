@@ -144,10 +144,42 @@ async def root():
 
 
 # ============================================================
+# Quick Tips
+# ============================================================
+
+@app.get("/v1/nutripilot/recommendations")
+async def quick_tips(
+    token: str = Depends(verify_token),
+):
+    """
+    Generate five quick healthy eating tips.
+    """
+
+    try:
+        response = call_llm(
+            system_prompt="You are a health coach.",
+            user_prompt="Give 5 quick healthy eating tips.",
+        )
+
+        return {
+            "type": "tips",
+            "data": response,
+        }
+
+    except Exception:
+        logger.exception("Failed to generate healthy eating tips")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error. Please try again later.",
+        )
+
+
+# ============================================================
 # Diet Plan Endpoints
 # ============================================================
 
-@app.post("/v1/diet/plan")
+@app.post("/v1/nutripilot/plan")
 async def generate_diet_plan(
     user_data: UserData,
     token: str = Depends(verify_token),
@@ -195,7 +227,7 @@ Provide a Day 1 to Day 7 plan using homemade food.
         )
 
 
-@app.post("/v1/diet/meal")
+@app.post("/v1/nutripilot/meal")
 async def suggest_meal(
     user_data: UserData,
     token: str = Depends(verify_token),
@@ -229,7 +261,7 @@ async def suggest_meal(
         )
 
 
-@app.post("/v1/diet/plan/regenerate")
+@app.post("/v1/nutripilot/plan/regenerate")
 async def regenerate_plan(
     data: ModifyPlanInput,
     token: str = Depends(verify_token),
@@ -275,7 +307,7 @@ Modification request:
 # Food & Nutrition Endpoints
 # ============================================================
 
-@app.post("/v1/diet/substitute")
+@app.post("/v1/nutripilot/substitute")
 async def substitute_food(
     data: FoodInput,
     token: str = Depends(verify_token),
@@ -312,7 +344,7 @@ async def substitute_food(
         )
 
 
-@app.post("/v1/diet/analyze")
+@app.post("/v1/nutripilot/analysis")
 async def analyze_food(
     data: FoodInput,
     token: str = Depends(verify_token),
@@ -342,38 +374,6 @@ async def analyze_food(
 
     except Exception:
         logger.exception("Failed to analyze food")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error. Please try again later.",
-        )
-
-
-# ============================================================
-# Quick Tips
-# ============================================================
-
-@app.get("/v1/diet/tips")
-async def quick_tips(
-    token: str = Depends(verify_token),
-):
-    """
-    Generate five quick healthy eating tips.
-    """
-
-    try:
-        response = call_llm(
-            system_prompt="You are a health coach.",
-            user_prompt="Give 5 quick healthy eating tips.",
-        )
-
-        return {
-            "type": "tips",
-            "data": response,
-        }
-
-    except Exception:
-        logger.exception("Failed to generate healthy eating tips")
 
         raise HTTPException(
             status_code=500,
