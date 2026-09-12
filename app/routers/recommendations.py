@@ -11,6 +11,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ============================================================
+# NutriPilot Recommendations Endpoint
+# ============================================================
+
 @router.get("/v1/nutripilot/recommendations")
 async def quick_tips(
     token: str = Depends(verify_token),

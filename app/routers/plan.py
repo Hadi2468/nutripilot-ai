@@ -13,7 +13,7 @@ router = APIRouter()
 
 
 # ============================================================
-# Diet Plan Endpoints
+# NutriPilot Plan Endpoint
 # ============================================================
 
 @router.post("/v1/nutripilot/plan")
