@@ -2,11 +2,13 @@ import logging
 import os
 from typing import Optional
 
+from app.models.schemas import FoodInput, ModifyPlanInput, UserData
+
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from groq import Groq
 from mangum import Mangum
-from pydantic import BaseModel
 
 
 # ============================================================
@@ -74,30 +76,6 @@ def verify_token(
         )
 
     return token
-
-
-# ============================================================
-# Request Models
-# ============================================================
-
-class UserData(BaseModel):
-    meal_preference: str
-    calories: int
-    meal_count: int
-    diseases: Optional[str] = None
-    goal: str
-    age: int
-    dislikes: Optional[str] = None
-    preferred_foods: Optional[str] = None
-
-
-class FoodInput(BaseModel):
-    food_items: str
-
-
-class ModifyPlanInput(BaseModel):
-    existing_plan: str
-    modification_request: str
 
 
 # ============================================================
