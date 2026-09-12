@@ -2,11 +2,11 @@ import logging
 from typing import Optional
 
 from app.core.config import API_TOKEN
+from app.core.security import verify_token
 from app.models.schemas import FoodInput, ModifyPlanInput, UserData
 from app.services.llm_service import call_llm
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from mangum import Mangum
 
 
@@ -28,31 +28,6 @@ app = FastAPI(
     description="AI-powered diet planning and nutrition analysis API",
     version="1.0.0",
 )
-
-
-# ============================================================
-# Authentication
-# ============================================================
-
-security = HTTPBearer()
-
-
-def verify_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> str:
-    """
-    Validate the Bearer token provided by the client.
-    """
-
-    token = credentials.credentials
-
-    if token != API_TOKEN:
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized",
-        )
-
-    return token
 
 
 # ============================================================
