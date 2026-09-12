@@ -30,6 +30,7 @@ Thumbs.db
 .idea/
 
 # AWS deployment artifacts
+lambda_package/
 *.zip
 
 # Logs
