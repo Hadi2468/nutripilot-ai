@@ -8,6 +8,7 @@ from app.routers.recommendations import router as recommendations_router
 from app.routers.plan import router as plan_router
 from app.routers.meal import router as meal_router
 from app.routers.regenerate import router as regenerate_router
+from app.routers.substitute import router as substitute_router
 from app.services.llm_service import call_llm
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -37,6 +38,7 @@ app.include_router(recommendations_router)
 app.include_router(plan_router)
 app.include_router(meal_router)
 app.include_router(regenerate_router)
+app.include_router(substitute_router)
 
 
 # ============================================================
@@ -53,46 +55,6 @@ async def root():
         "message": "API is live"
     }
 
-
-# ============================================================
-# Food & Nutrition Endpoints
-# ============================================================
-
-@app.post("/v1/nutripilot/substitute")
-async def substitute_food(
-    data: FoodInput,
-    token: str = Depends(verify_token),
-):
-    """
-    Suggest healthy alternatives for specified foods.
-    """
-
-    try:
-        prompt = (
-            f"Suggest healthy alternatives for: "
-            f"{data.food_items}"
-        )
-
-        response = call_llm(
-            system_prompt=(
-                "You are a nutritionist suggesting "
-                "healthy food substitutions."
-            ),
-            user_prompt=prompt,
-        )
-
-        return {
-            "type": "substitution",
-            "data": response,
-        }
-
-    except Exception:
-        logger.exception("Failed to generate food substitutions")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error. Please try again later.",
-        )
 
 
 @app.post("/v1/nutripilot/analysis")
