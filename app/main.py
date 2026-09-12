@@ -1,7 +1,7 @@
 import logging
-import os
 from typing import Optional
 
+from app.core.config import API_TOKEN
 from app.models.schemas import FoodInput, ModifyPlanInput, UserData
 from app.services.llm_service import call_llm
 
@@ -17,13 +17,6 @@ from mangum import Mangum
 logging.basicConfig(level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-
-
-# ============================================================
-# Environment Variables
-# ============================================================
-
-API_TOKEN = os.getenv("API_TOKEN")
 
 
 # ============================================================
