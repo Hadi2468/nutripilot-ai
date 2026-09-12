@@ -6,6 +6,7 @@ from app.core.security import verify_token
 from app.models.schemas import FoodInput, ModifyPlanInput, UserData
 from app.routers.recommendations import router as recommendations_router
 from app.routers.plan import router as plan_router
+from app.routers.meal import router as meal_router
 from app.services.llm_service import call_llm
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -33,6 +34,7 @@ app = FastAPI(
 
 app.include_router(recommendations_router)
 app.include_router(plan_router)
+app.include_router(meal_router)
 
 
 # ============================================================
@@ -48,40 +50,6 @@ async def root():
     return {
         "message": "API is live"
     }
-
-
-@app.post("/v1/nutripilot/meal")
-async def suggest_meal(
-    user_data: UserData,
-    token: str = Depends(verify_token),
-):
-    """
-    Suggest a single healthy meal based on the user's goal.
-    """
-
-    try:
-        prompt = (
-            f"Suggest one healthy meal for {user_data.goal} "
-            f"within {user_data.calories} calories."
-        )
-
-        response = call_llm(
-            system_prompt="You are a diet expert.",
-            user_prompt=prompt,
-        )
-
-        return {
-            "type": "single_meal",
-            "data": response,
-        }
-
-    except Exception:
-        logger.exception("Failed to generate meal suggestion")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error. Please try again later.",
-        )
 
 
 @app.post("/v1/nutripilot/plan/regenerate")
