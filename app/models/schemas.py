@@ -24,3 +24,10 @@ class FoodInput(BaseModel):
 class ModifyPlanInput(BaseModel):
     existing_plan: str
     modification_request: str
+
+
+class NutritionAnalysis(BaseModel):
+    calories: float
+    protein: float
+    carbohydrates: float
+    fat: float

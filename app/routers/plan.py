@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.security import verify_token
 from app.models.schemas import UserData
 from app.services.llm_service import call_llm
+from app.services.validators import validate_weekly_plan_output
 
 
 logger = logging.getLogger(__name__)
@@ -50,10 +51,21 @@ Provide a Day 1 to Day 7 plan using homemade food.
             user_prompt=prompt,
         )
 
+        if not validate_weekly_plan_output(response):
+            logger.warning("LLM returned an invalid weekly plan")
+
+            raise HTTPException(
+                status_code=502,
+                detail="The AI generated an invalid weekly plan.",
+            )
+
         return {
             "type": "weekly_plan",
             "data": response,
         }
+
+    except HTTPException:
+        raise
 
     except Exception:
         logger.exception("Failed to generate diet plan")

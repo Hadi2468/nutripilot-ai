@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.security import verify_token
 from app.models.schemas import FoodInput
 from app.services.llm_service import call_llm
-
+from app.services.validators import parse_nutrition_analysis_output
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,11 @@ async def analyze_food(
 
     try:
         prompt = (
-            f"Analyze the nutritional value of: "
-            f"{data.food_items}"
+            "Analyze the nutritional value of the following foods and "
+            "return ONLY valid JSON with these numeric fields: "
+            "calories, protein, carbohydrates, fat. "
+            "Do not include markdown, explanations, or code fences.\n\n"
+            f"Food items: {data.food_items}"
         )
 
         response = call_llm(
@@ -39,10 +42,25 @@ async def analyze_food(
             user_prompt=prompt,
         )
 
+
+
+        parsed = parse_nutrition_analysis_output(response)
+
+        if parsed is None:
+            logger.warning("LLM returned invalid structured nutrition analysis")
+
+            raise HTTPException(
+                status_code=502,
+                detail="The AI generated an invalid nutrition analysis.",
+            )
+
         return {
             "type": "analysis",
-            "data": response,
+            "data": parsed.model_dump(),
         }
+
+    except HTTPException:
+        raise
 
     except Exception:
         logger.exception("Failed to analyze food")

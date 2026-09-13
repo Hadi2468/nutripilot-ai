@@ -158,10 +158,36 @@ def display_api_result(
 
     data = result.get("data")
 
-    if data:
-        st.markdown(data)
-    else:
+    if not data:
         st.info(empty_message)
+        return
+
+    if isinstance(data, dict):
+        units = {
+            "calories": "kcal",
+            "protein": "g",
+            "carbohydrates": "g",
+            "fat": "g",
+        }
+
+        columns = st.columns(len(data))
+
+        for column, (label, value) in zip(columns, data.items()):
+            unit = units.get(label, "")
+
+            display_value = (
+                f"{value} {unit}"
+                if unit
+                else value
+            )
+
+            column.metric(
+                label=label.replace("_", " ").title(),
+                value=display_value,
+            )
+
+    else:
+        st.markdown(data)
 
 
 def display_feature_header(icon, title, description):
