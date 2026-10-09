@@ -1,37 +1,40 @@
-# Environment variables and secrets
+# Secrets — never commit
 .env
 .env.*
 !.env.example
+.streamlit/secrets.toml
 
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
+*.egg-info/
+build/
+dist/
 
 # Virtual environments
 .venv/
 venv/
 env/
 
-# Testing
+# Tooling caches
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 .coverage
 htmlcov/
 
-# Streamlit
-.streamlit/secrets.toml
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-
-# AWS deployment artifacts
+# AWS deployment artefacts
+.aws-sam/
+samconfig.toml
 lambda_package/
 *.zip
 
 # Logs
 *.log
+logs/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

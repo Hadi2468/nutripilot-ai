@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+.git
+.github
+.venv
+venv
+**/__pycache__
+.pytest_cache
+.ruff_cache
+.aws-sam
+lambda_package
+*.zip
+tests
+assets
+*.md
+!README.md

@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  NutriPilot AI - Client -> API Gateway (HTTP API) -> Lambda (FastAPI + Mangum) ->
+  Groq or OpenAI. Keys and the API token are read from AWS Secrets Manager.
+
+Parameters:
+  SecretArn:
+    Type: String
+    Description: >-
+      ARN of a Secrets Manager secret holding a JSON object of environment variables, e.g.
+      {"GROQ_API_KEY": "...", "NUTRIPILOT_API_TOKEN": "..."} (add OPENAI_API_KEY for OpenAI).
+  Provider:
+    Type: String
+    Default: groq
+    AllowedValues: [groq, openai]
+  Model:
+    Type: String
+    Default: ""
+    Description: Model ID; empty uses the provider default (openai/gpt-oss-20b or gpt-4o-mini).
+  StageName:
+    Type: String
+    Default: prod
+  LogRetentionInDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [7, 14, 30, 60, 90, 180, 365]
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Architectures: [arm64]
+
+Resources:
+  NutriPilotApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref StageName
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 10
+        ThrottlingBurstLimit: 20
+
+  FunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-api"
+      RetentionInDays: !Ref LogRetentionInDays
+
+  NutriPilotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-api"
+      Description: NutriPilot AI REST API (FastAPI on Lambda via Mangum)
+      CodeUri: src/
+      Handler: nutripilot.api.handler
+      MemorySize: 512
+      # HTTP API integrations time out at 30 s; a plan plus one repair must fit inside it.
+      Timeout: 30
+      LoggingConfig:
+        LogFormat: JSON
+        ApplicationLogLevel: INFO
+        SystemLogLevel: WARN
+        LogGroup: !Ref FunctionLogGroup
+      Environment:
+        Variables:
+          NUTRIPILOT_SECRET_ARN: !Ref SecretArn
+          NUTRIPILOT_BASE_PATH: !Sub "/${StageName}"
+          NUTRIPILOT_PROVIDER: !Ref Provider
+          NUTRIPILOT_MODEL: !Ref Model
+          NUTRIPILOT_AUTH_REQUIRED: "true"
+          NUTRIPILOT_LLM_TIMEOUT_S: "12"
+          NUTRIPILOT_LLM_MAX_RETRIES: "0"
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref SecretArn
+      Events:
+        Root:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NutriPilotApi
+            Path: /
+            Method: ANY
+        Proxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NutriPilotApi
+            Path: /{proxy+}
+            Method: ANY
+
+Outputs:
+  ApiUrl:
+    Description: Base URL for the dashboard's NUTRIPILOT_API_URL
+    Value: !Sub "https://${NutriPilotApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
+  FunctionName:
+    Value: !Ref NutriPilotFunction
