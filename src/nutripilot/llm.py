@@ -1,6 +1,6 @@
-"""Chat model adapter. Groq and OpenAI both speak the OpenAI Chat Completions protocol, so
-one small client covers both; the service depends only on the `ChatModel` protocol, which
-is how the tests run offline with a scripted fake."""
+"""Chat model adapters. Groq and OpenAI both speak the OpenAI Chat Completions protocol, so
+one small client covers both; Claude goes through the Anthropic SDK. The service depends
+only on the `ChatModel` protocol, which is how the tests run offline with a scripted fake."""
 
 from __future__ import annotations
 
@@ -8,9 +8,10 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+import anthropic
 import openai
 
-from nutripilot.config import Settings
+from nutripilot.config import BASE_URLS, DEFAULT_MODELS, KEY_ENV_NAMES, Provider, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -70,17 +71,75 @@ class OpenAICompatibleChat:
         )
 
 
-def build_chat_model(settings: Settings) -> OpenAICompatibleChat:
-    api_key = settings.provider_api_key()
+class AnthropicChat:
+    """Claude via the Anthropic Messages API.
+
+    Claude 5.5 models think adaptively and reject sampling parameters, so depth is set
+    with `effort` instead of `temperature`. JSON comes from the schema in the system
+    prompt; the service validates and repairs it like any other provider's output.
+    """
+
+    # Opus re-runs a request it declines on a fallback model (server side); Haiku has none.
+    FALLBACK_MODELS = frozenset({"claude-opus-5-5"})
+    MAX_TOKENS = 16000  # room for adaptive thinking plus a full seven-day plan
+
+    def __init__(self, client: Any, model: str, effort: str):
+        self.client = client
+        self.provider = "anthropic"
+        self.model = model
+        self.effort = effort
+
+    def complete(self, messages: list[Message]) -> Completion:
+        system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+        turns = [m for m in messages if m["role"] != "system"]
+        request: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": self.MAX_TOKENS,
+            "system": system,
+            "messages": turns,
+            "output_config": {"effort": self.effort},
+        }
+        if self.model in self.FALLBACK_MODELS:
+            request |= {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+        try:
+            response = self.client.beta.messages.create(**request)
+        except anthropic.RateLimitError as exc:
+            raise LLMRateLimitError("The LLM provider is rate limiting requests") from exc
+        except anthropic.APIError as exc:
+            logger.warning("LLM call failed: %s", exc.__class__.__name__)
+            raise LLMError("The LLM provider is unavailable") from exc
+
+        if response.stop_reason == "refusal":
+            raise LLMError("The model declined this request")
+        return Completion(
+            content="".join(b.text for b in response.content if b.type == "text"),
+            prompt_tokens=response.usage.input_tokens,
+            completion_tokens=response.usage.output_tokens,
+        )
+
+
+def build_chat_model(
+    settings: Settings, provider: Provider | None = None, model: str | None = None
+) -> ChatModel:
+    """The configured default model, or a specific catalog model chosen per request."""
+    provider = provider or settings.provider
+    model = model or (settings.resolved_model if provider == settings.provider else None)
+    api_key = settings.provider_api_key(provider)
     if not api_key:
-        env = "GROQ_API_KEY" if settings.provider == "groq" else "OPENAI_API_KEY"
-        raise LLMError(f"{env} is not configured for provider '{settings.provider}'")
+        raise LLMError(f"{KEY_ENV_NAMES[provider]} is not configured for provider '{provider}'")
+
+    if provider == "anthropic":
+        client = anthropic.Anthropic(
+            api_key=api_key, timeout=settings.llm_timeout_s, max_retries=settings.llm_max_retries
+        )
+        return AnthropicChat(client, model or DEFAULT_MODELS[provider], settings.claude_effort)
+
     client = openai.OpenAI(
         api_key=api_key,
-        base_url=settings.base_url,
+        base_url=BASE_URLS[provider],
         timeout=settings.llm_timeout_s,
         max_retries=settings.llm_max_retries,
     )
     return OpenAICompatibleChat(
-        client, settings.provider, settings.resolved_model, settings.temperature
+        client, provider, model or DEFAULT_MODELS[provider], settings.temperature
     )

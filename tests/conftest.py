@@ -77,6 +77,7 @@ def _isolated_env(monkeypatch):
     # token; tests must behave the same on every machine and in CI.
     for name in (
         "API_TOKEN",
+        "ANTHROPIC_API_KEY",
         "API_URL",
         "GROQ_API_KEY",
         "OPENAI_API_KEY",

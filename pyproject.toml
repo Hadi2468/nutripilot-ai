@@ -5,13 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "nutripilot-ai"
 version = "2.0.0"
-description = "Structured, validated nutrition planning with LLMs: FastAPI on AWS Lambda, Groq or OpenAI."
+description = "Structured, validated nutrition planning with LLMs: FastAPI on AWS Lambda, with Groq, OpenAI or Claude."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Hadi Hosseini" }]
-keywords = ["llm", "nutrition", "meal-planning", "fastapi", "aws-lambda", "groq", "structured-output"]
+keywords = ["llm", "nutrition", "meal-planning", "fastapi", "aws-lambda", "groq", "claude", "anthropic", "structured-output"]
 dependencies = [
+    "anthropic>=1.0",
     "fastapi>=0.115",
     "mangum>=0.19",
     "openai>=1.40",

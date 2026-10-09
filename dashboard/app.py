@@ -43,12 +43,27 @@ st.set_page_config(page_title="NutriPilot AI", page_icon="🥗", layout="wide")
 # ============================================================
 
 
-def call_api(method: str, path: str, **kwargs: Any) -> dict[str, Any] | None:
-    """Call the API; show a friendly error and return None on failure."""
-    headers = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
+def _headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_models() -> dict[str, Any] | None:
     try:
+        response = requests.get(f"{PREFIX}/models", headers=_headers(), timeout=10)
+        return response.json() if response.ok else None
+    except requests.exceptions.RequestException:
+        return None
+
+
+def call_api(method: str, path: str, **kwargs: Any) -> dict[str, Any] | None:
+    """Call the API with the model chosen in the sidebar; show a friendly error and
+    return None on failure."""
+    params = {**kwargs.pop("params", {}), **st.session_state.get("model_choice", {})}
+    try:
+        # Long timeout: a thinking model plus one repair can take a few minutes.
         response = requests.request(
-            method, f"{PREFIX}{path}", headers=headers, timeout=60, **kwargs
+            method, f"{PREFIX}{path}", headers=_headers(), params=params, timeout=180, **kwargs
         )
     except requests.exceptions.Timeout:
         st.error("⏱️ The request took too long. Please try again.")
@@ -332,11 +347,44 @@ PAGES = {
     "Quick tips": tips_page,
 }
 
+
+def model_picker() -> None:
+    """Sidebar model choice; only models whose provider key is configured are offered."""
+    catalog = fetch_models()
+    if not catalog:
+        st.sidebar.caption("Model: the API's default")
+        st.session_state.model_choice = {}
+        return
+    available = [m for m in catalog["models"] if m["available"]]
+    missing = sorted({m["provider"] for m in catalog["models"] if not m["available"]})
+    if not available:
+        st.sidebar.warning("No LLM provider key is configured on the API.")
+        st.session_state.model_choice = {}
+        return
+    default = catalog["default"]
+    index = next(
+        (
+            i
+            for i, m in enumerate(available)
+            if (m["provider"], m["model"]) == tuple(default.values())
+        ),
+        0,
+    )
+    choice = st.sidebar.selectbox(
+        "🧠 Model", available, index=index, format_func=lambda m: m["label"]
+    )
+    st.session_state.model_choice = {"provider": choice["provider"], "model": choice["model"]}
+    if missing:
+        st.sidebar.caption("Add an API key on the server to enable: " + ", ".join(missing))
+
+
 st.sidebar.title("🥗 NutriPilot AI")
 st.sidebar.caption("Structured, validated nutrition planning")
 page = st.sidebar.radio("Feature", list(PAGES))
 st.sidebar.divider()
+model_picker()
+st.sidebar.divider()
 st.sidebar.caption(f"API: {API_URL}")
-st.sidebar.caption("FastAPI · AWS Lambda · Groq / OpenAI · Streamlit")
+st.sidebar.caption("FastAPI · AWS Lambda · Groq / OpenAI / Claude · Streamlit")
 
 PAGES[page]()

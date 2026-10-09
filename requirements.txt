@@ -1,5 +1,6 @@
 # Runtime + API + CLI + dashboard dependencies (mirrors pyproject.toml).
 # Preferred install: pip install -e ".[api,cli,dashboard,dev]"
+anthropic>=1.0
 fastapi>=0.115
 mangum>=0.19
 openai>=1.40

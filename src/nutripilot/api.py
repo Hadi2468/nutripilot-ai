@@ -9,7 +9,8 @@ import logging
 import os
 import secrets
 import threading
-from typing import Annotated
+from collections.abc import Callable
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
@@ -17,8 +18,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from mangum import Mangum
 
 from nutripilot import __version__
-from nutripilot.config import Settings, get_settings
-from nutripilot.llm import LLMError, LLMRateLimitError
+from nutripilot.config import (
+    DEFAULT_MODELS,
+    MODEL_CATALOG,
+    Provider,
+    Settings,
+    get_settings,
+    provider_of,
+)
+from nutripilot.llm import ChatModel, LLMError, LLMRateLimitError, build_chat_model
 from nutripilot.schemas import (
     Envelope,
     FoodInput,
@@ -43,16 +51,71 @@ PREFIX = "/v1/nutripilot"
 # Dependencies
 # ============================================================
 
-_service_lock = threading.Lock()
+ModelBuilder = Callable[[Provider, str], ChatModel]
 
 
-def get_service(request: Request) -> NutriPilotService:
-    # Built on first use, so importing the app (tests, Lambda cold start) never needs keys.
+class ModelRegistry:
+    """Builds each chat model on first use and reuses it. Models are only built when asked
+    for, so importing the app (tests, Lambda cold start) never needs API keys."""
+
+    def __init__(self, settings: Settings, builder: ModelBuilder | None = None):
+        self.settings = settings
+        self.builder = builder or (lambda p, m: build_chat_model(settings, p, m))
+        self._models: dict[tuple[str, str], ChatModel] = {}
+        self._lock = threading.Lock()
+
+    def default(self) -> tuple[Provider, str]:
+        return self.settings.provider, self.settings.resolved_model
+
+    def resolve(self, provider: Provider | None, model: str | None) -> tuple[Provider, str]:
+        """Fill in whichever half is missing and check the pair against the catalog."""
+        if provider is None and model is None:
+            return self.default()
+        if provider is None:
+            provider = provider_of(model) if model else None
+            if provider is None:
+                raise HTTPException(422, f"Unknown model '{model}'")
+        if model is None:
+            default_provider, default_model = self.default()
+            model = default_model if provider == default_provider else DEFAULT_MODELS[provider]
+        if (provider, model) != self.default() and model not in MODEL_CATALOG[provider]:
+            raise HTTPException(422, f"Model '{model}' is not offered for provider '{provider}'")
+        return provider, model
+
+    def get(self, provider: Provider, model: str) -> ChatModel:
+        with self._lock:
+            if (provider, model) not in self._models:
+                self._models[(provider, model)] = self.builder(provider, model)
+            return self._models[(provider, model)]
+
+    def catalog(self) -> dict[str, Any]:
+        default_provider, default_model = self.default()
+        return {
+            "default": {"provider": default_provider, "model": default_model},
+            "models": [
+                {
+                    "provider": provider,
+                    "model": model,
+                    "label": label,
+                    "available": bool(self.settings.provider_api_key(provider)),
+                }
+                for provider, models in MODEL_CATALOG.items()
+                for model, label in models.items()
+            ],
+        }
+
+
+def get_service(
+    request: Request,
+    provider: Annotated[Provider | None, Query(description="LLM provider for this request")] = None,
+    model: Annotated[str | None, Query(max_length=100, description="Catalog model ID")] = None,
+) -> NutriPilotService:
     state = request.app.state
-    with _service_lock:
-        if state.service is None:
-            state.service = NutriPilotService.from_settings(state.settings)
-    return state.service
+    registry: ModelRegistry = state.models
+    provider, model = registry.resolve(provider, model)
+    if state.service is not None and (provider, model) == registry.default():
+        return state.service
+    return NutriPilotService(registry.get(provider, model), state.settings)
 
 
 def require_token(
@@ -116,6 +179,13 @@ def substitute(req: SubstituteRequest, svc: ServiceDep) -> Envelope[Substitution
     return svc.substitute(req)
 
 
+@router.get("/models", tags=["models"])
+def models(request: Request) -> dict[str, Any]:
+    """The models a client may choose per request (`?provider=&model=`), and which are
+    available because their provider's API key is configured."""
+    return request.app.state.models.catalog()
+
+
 @router.get("/recommendations", response_model=Envelope[Tips])
 def recommendations(
     svc: ServiceDep, goal: Annotated[Goal | None, Query()] = None
@@ -130,7 +200,9 @@ def recommendations(
 
 
 def create_app(
-    service: NutriPilotService | None = None, settings: Settings | None = None
+    service: NutriPilotService | None = None,
+    settings: Settings | None = None,
+    model_builder: ModelBuilder | None = None,
 ) -> FastAPI:
     logging.basicConfig(level=logging.INFO)
     settings = settings or get_settings()
@@ -141,7 +213,8 @@ def create_app(
         version=__version__,
     )
     app.state.settings = settings
-    app.state.service = service
+    app.state.service = service  # injected default-model service (tests); else built lazily
+    app.state.models = ModelRegistry(settings, model_builder)
 
     @app.get("/", tags=["ops"])
     @app.get("/health", tags=["ops"])

@@ -2,22 +2,23 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >-
   NutriPilot AI - Client -> API Gateway (HTTP API) -> Lambda (FastAPI + Mangum) ->
-  Groq or OpenAI. Keys and the API token are read from AWS Secrets Manager.
+  Groq, OpenAI or Claude. Keys and the API token are read from AWS Secrets Manager.
 
 Parameters:
   SecretArn:
     Type: String
     Description: >-
       ARN of a Secrets Manager secret holding a JSON object of environment variables, e.g.
-      {"GROQ_API_KEY": "...", "NUTRIPILOT_API_TOKEN": "..."} (add OPENAI_API_KEY for OpenAI).
+      {"GROQ_API_KEY": "...", "NUTRIPILOT_API_TOKEN": "..."}; add OPENAI_API_KEY and/or
+      ANTHROPIC_API_KEY to offer those models too.
   Provider:
     Type: String
     Default: groq
-    AllowedValues: [groq, openai]
+    AllowedValues: [groq, openai, anthropic]
   Model:
     Type: String
     Default: ""
-    Description: Model ID; empty uses the provider default (openai/gpt-oss-20b or gpt-4o-mini).
+    Description: Default model ID; empty uses the provider default (openai/gpt-oss-20b, gpt-4o-mini or claude-opus-5-5).
   StageName:
     Type: String
     Default: prod

@@ -18,7 +18,8 @@ from pydantic import BaseModel, ValidationError
 from rich.console import Console
 from rich.table import Table
 
-from nutripilot.llm import LLMError
+from nutripilot.config import MODEL_CATALOG, get_settings, provider_of
+from nutripilot.llm import LLMError, build_chat_model
 from nutripilot.schemas import (
     Envelope,
     Goal,
@@ -36,6 +37,10 @@ console = Console()
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="nutripilot", description=__doc__.split("\n")[0])
     parser.add_argument("--json", action="store_true", help="print the raw JSON response")
+    parser.add_argument("--provider", choices=list(MODEL_CATALOG), help="LLM provider")
+    parser.add_argument(
+        "--model", help="model ID, e.g. claude-haiku-5-5 (default: the provider's default)"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     def restrictions(p: argparse.ArgumentParser) -> None:
@@ -147,7 +152,10 @@ def main(argv: list[str] | None = None, service: NutriPilotService | None = None
     args = _parser().parse_args(argv)
     logging.basicConfig(level=logging.WARNING)
     try:
-        service = service or NutriPilotService.from_settings()
+        if service is None:
+            settings = get_settings()
+            provider = args.provider or (args.model and provider_of(args.model)) or None
+            service = NutriPilotService(build_chat_model(settings, provider, args.model), settings)
         with console.status("Asking the nutrition model..."):
             result = run(args, service)
     except ValidationError as exc:

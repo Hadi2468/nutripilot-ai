@@ -69,6 +69,10 @@ class NutriPilotService:
         settings = settings or get_settings()
         return cls(build_chat_model(settings), settings)
 
+    def with_llm(self, llm: ChatModel) -> NutriPilotService:
+        """The same service on another model (per-request model choice)."""
+        return NutriPilotService(llm, self.settings)
+
     # ------------------------------------------------------------
     # Features
     # ------------------------------------------------------------

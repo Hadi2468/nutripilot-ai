@@ -106,11 +106,33 @@ raise OutputValidationError(problems)   # → HTTP 502 with the problems
 
 Prompts tell the model the rules; code makes sure the rules that can be checked actually hold.
 
-## 6. LLM adapter
+## 6. LLM adapters and model choice
 
-Groq and OpenAI both implement the OpenAI Chat Completions API, so `llm.py` uses the
-`openai` SDK with a provider-specific `base_url`. This keeps the Lambda package small
-(no LangChain), and switching providers is `NUTRIPILOT_PROVIDER=openai`.
+Groq and OpenAI both implement the OpenAI Chat Completions API, so one adapter uses the
+`openai` SDK with a provider-specific `base_url` and JSON mode. Claude goes through the
+Anthropic SDK (`AnthropicChat`):
+
+- the system prompt is passed as `system`, the rest as alternating user/assistant turns
+  (the repair loop already produces that shape);
+- Claude 5.5 models think adaptively and reject sampling parameters, so there is no
+  `temperature`; depth is `output_config.effort` (`NUTRIPILOT_CLAUDE_EFFORT`, default `medium`);
+- only `text` blocks are read (thinking blocks are skipped), and a `refusal` stop reason
+  becomes a 503 rather than an empty answer;
+- Opus 5.5 opts into server-side refusal fallback (`fallbacks: "default"`); Haiku has none.
+
+JSON from Claude relies on the schema in the prompt plus the same Pydantic validation and
+repair as the other providers, so all models are held to identical checks. Anthropic's
+native structured outputs (`output_config.format`) would add a decoding-level guarantee and
+is a natural next step.
+
+**Choosing a model per request.** `MODEL_CATALOG` in `config.py` lists the models a client
+may pick (three per provider). Any feature endpoint accepts `?provider=&model=`; a model
+alone implies its provider, a provider alone uses its default model. The `ModelRegistry`
+builds each client once and reuses it. `GET /models` reports which models are available
+(their provider key is configured), which is what the dashboard's model picker shows. Only
+catalog models are accepted, so an API client cannot select an arbitrary, expensive model.
+On Lambda, Claude with thinking at `medium` effort can exceed API Gateway's 30 s limit for
+a full week; use Haiku, lower effort, or a longer-timeout integration there.
 
 The service depends on a two-method `ChatModel` protocol, not on the SDK. Tests inject a
 scripted `FakeLLM`; nothing in the suite needs a key or the network.

@@ -1,5 +1,6 @@
 # Lambda runtime dependencies, installed by `sam build` (CodeUri: src/).
 # Keep in sync with [project.dependencies] in pyproject.toml. boto3 ships with the runtime.
+anthropic>=1.0
 fastapi>=0.115
 mangum>=0.19
 openai>=1.40

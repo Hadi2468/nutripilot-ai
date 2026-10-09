@@ -1,6 +1,6 @@
 # NutriPilot AI
 
-### A serverless nutrition planner that checks the LLM's work: structured outputs, code-verified calories and allergens, on AWS Lambda
+### A serverless nutrition planner that checks the LLM's work: structured outputs, code-verified calories and allergens, with Groq, OpenAI or Claude on AWS Lambda
 
 [![CI](https://github.com/Hadi2468/nutripilot-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Hadi2468/nutripilot-ai/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -30,11 +30,11 @@ Totals are summed in code, never trusted from the model.
 | **Bounded&nbsp;self-repair** | Failed checks are sent back to the model with the exact problems; one repair by default, then 502 |
 | **Numbers&nbsp;from&nbsp;code** | Daily and meal totals are computed fields; calories vs macronutrients (Atwater 4/4/9) mismatches become warnings |
 | **Safety&nbsp;rules** | No weight-loss plans for under-18s, no adult plans below 1,200 kcal, audience-specific guidance for children, teens and older adults, a clinician warning when health conditions are given |
-| **Switchable&nbsp;LLM** | Groq (`openai/gpt-oss-20b`, default) or OpenAI (`gpt-4o-mini`) through one OpenAI-compatible client |
+| **Pick&nbsp;your&nbsp;model** | Groq (GPT-OSS, Llama), OpenAI (GPT-4o mini, GPT-4.1) or Claude (Opus 5.5, Sonnet 5.5, Haiku 5.5), chosen per request from the dashboard, the CLI or `?provider=&model=`; every model goes through the same checks |
 | **Serverless** | API Gateway (HTTP API) → Lambda (FastAPI + Mangum), keys in Secrets Manager, JSON logs; one SAM template |
 | **Observable** | Every response carries provider, model, prompt version, latency, tokens and repair count |
 | **Three&nbsp;interfaces,&nbsp;one&nbsp;service** | REST API (bearer auth), `nutripilot` CLI and a Streamlit dashboard share one service layer |
-| **Tested&nbsp;offline** | 70 pytest tests with a scripted fake LLM: no keys, no network, no cost; 98% coverage; CI on every push |
+| **Tested&nbsp;offline** | 86 pytest tests with a scripted fake LLM: no keys, no network, no cost; 98% coverage; CI on every push |
 
 ---
 
@@ -68,7 +68,7 @@ git clone https://github.com/Hadi2468/nutripilot-ai.git
 cd nutripilot-ai
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -e ".[api,cli,dashboard,dev]"
-cp .env.example .env                                 # add GROQ_API_KEY (or OPENAI_API_KEY)
+cp .env.example .env                                 # add GROQ_API_KEY, OPENAI_API_KEY and/or ANTHROPIC_API_KEY
 ```
 
 ### 1. CLI
@@ -80,6 +80,7 @@ nutripilot meal --calories 600 --type dinner --preference Mediterranean
 nutripilot analyze "2 eggs, 1 slice whole-grain toast, 1 banana"
 nutripilot substitute "white rice, soda" --goal "weight loss"
 nutripilot --json tips --goal "muscle gain"
+nutripilot --model claude-haiku-5-5 analyze "1 cup oatmeal, 1 apple"   # any catalog model
 ```
 
 ### 2. REST API
@@ -97,6 +98,11 @@ uvicorn nutripilot.api:app --reload        # interactive docs at http://localhos
 | `POST` | `/v1/nutripilot/analysis` | Per-item nutrients and totals |
 | `POST` | `/v1/nutripilot/substitute` | Healthier swaps that respect allergies |
 | `GET` | `/v1/nutripilot/recommendations?goal=` | Five tips |
+| `GET` | `/v1/nutripilot/models` | The model catalog, and which models have a configured key |
+
+Add `?provider=anthropic&model=claude-haiku-5-5` (or just `?model=...`) to any feature endpoint to
+choose the model for that request; without it the configured default is used. Only catalog models
+are accepted (422 otherwise), so clients cannot run arbitrary, expensive models.
 
 ```bash
 curl -X POST localhost:8000/v1/nutripilot/plan -H "Content-Type: application/json" \
@@ -141,7 +147,7 @@ Every response has the same envelope (abridged; values are illustrative):
 streamlit run dashboard/app.py            # talks to the API at NUTRIPILOT_API_URL
 ```
 
-Generate a plan, see the daily average against your target, calories per day against the
+Pick a model in the sidebar (only models whose provider key is configured are offered), generate a plan, see the daily average against your target, calories per day against the
 target line, and each day's meals in tabs; then type a change ("more fish, no rice on
 weekdays") to revise it. Validation problems and warnings are shown, not hidden.
 
@@ -193,11 +199,11 @@ Secrets Manager loading, the CLI, and the Lambda handler behind an API Gateway s
 │   ├── checks.py         # deterministic checks + non-blocking warnings
 │   ├── policy.py         # audience and health-condition guidance, disclaimer
 │   ├── prompts.py        # every prompt, versioned (PROMPT_VERSION)
-│   ├── llm.py            # Groq / OpenAI client behind a ChatModel protocol
+│   ├── llm.py            # Groq / OpenAI / Claude clients behind a ChatModel protocol
 │   ├── service.py        # generate → parse → check → repair, one method per feature
 │   ├── api.py            # FastAPI app + Lambda handler (Mangum)
 │   ├── cli.py            # <b>nutripilot</b> command
-│   ├── config.py         # settings (env / .env)
+│   ├── config.py         # settings (env / .env) and the model catalog
 │   └── aws_secrets.py    # Secrets Manager → environment on Lambda
 ├── dashboard/app.py      # Streamlit UI (API client)
 ├── tests/                # offline pytest suite
@@ -212,10 +218,12 @@ Secrets Manager loading, the CLI, and the Lambda handler behind an API Gateway s
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `NUTRIPILOT_PROVIDER` | `groq` | `groq` or `openai` |
-| `GROQ_API_KEY` / `OPENAI_API_KEY` | — | Key for the selected provider |
-| `NUTRIPILOT_MODEL` | <code>openai/gpt&#8209;oss&#8209;20b</code> · <code>gpt&#8209;4o&#8209;mini</code> | Model override |
-| `NUTRIPILOT_TEMPERATURE` | `0.3` | Low: plans should be consistent |
+| `NUTRIPILOT_PROVIDER` | `groq` | Default provider: `groq`, `openai` or `anthropic` |
+| `GROQ_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | — | A key enables that provider's models |
+| `NUTRIPILOT_MODEL` | provider default | Default model (<code>openai/gpt&#8209;oss&#8209;20b</code>, <code>gpt&#8209;4o&#8209;mini</code>, <code>claude&#8209;opus&#8209;5&#8209;5</code>) |
+| `NUTRIPILOT_TEMPERATURE` | `0.3` | Groq / OpenAI: low, plans should be consistent |
+| `NUTRIPILOT_CLAUDE_EFFORT` | `medium` | Claude thinking depth (`low` ... `max`); Claude 5.5 models take effort instead of temperature |
+| `NUTRIPILOT_LLM_TIMEOUT_S` | `90` | Per LLM call (12 on Lambda) |
 | `NUTRIPILOT_MAX_REPAIRS` | `1` | Extra LLM calls allowed to fix a failed check |
 | `NUTRIPILOT_CALORIE_TOLERANCE` | `0.10` | Allowed daily calorie error |
 | `NUTRIPILOT_API_TOKEN` | *(empty)* | Enables bearer auth (`API_TOKEN` also accepted) |
