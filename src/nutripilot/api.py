@@ -19,6 +19,7 @@ from mangum import Mangum
 
 from nutripilot import __version__
 from nutripilot.config import (
+    CATALOG,
     DEFAULT_MODELS,
     MODEL_CATALOG,
     Provider,
@@ -94,13 +95,14 @@ class ModelRegistry:
             "default": {"provider": default_provider, "model": default_model},
             "models": [
                 {
-                    "provider": provider,
-                    "model": model,
-                    "label": label,
-                    "available": bool(self.settings.provider_api_key(provider)),
+                    "platform": spec.platform,
+                    "provider": spec.provider,
+                    "family": spec.family,
+                    "model": spec.model,
+                    "label": spec.label,
+                    "available": bool(self.settings.provider_api_key(spec.provider)),
                 }
-                for provider, models in MODEL_CATALOG.items()
-                for model, label in models.items()
+                for spec in CATALOG
             ],
         }
 

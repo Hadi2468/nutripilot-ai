@@ -108,8 +108,10 @@ Prompts tell the model the rules; code makes sure the rules that can be checked 
 
 ## 6. LLM adapters and model choice
 
-Groq and OpenAI both implement the OpenAI Chat Completions API, so one adapter uses the
-`openai` SDK with a provider-specific `base_url` and JSON mode. Claude goes through the
+Groq, OpenAI and the Meta Llama API all implement the OpenAI Chat Completions API, so one
+adapter uses the `openai` SDK with a provider-specific `base_url` and JSON mode. Reasoning
+models such as GPT-5.5 accept only the default temperature, so the catalog marks them and
+the adapter omits the parameter. Claude goes through the
 Anthropic SDK (`AnthropicChat`):
 
 - the system prompt is passed as `system`, the rest as alternating user/assistant turns
@@ -125,8 +127,12 @@ repair as the other providers, so all models are held to identical checks. Anthr
 native structured outputs (`output_config.format`) would add a decoding-level guarantee and
 is a natural next step.
 
-**Choosing a model per request.** `MODEL_CATALOG` in `config.py` lists the models a client
-may pick (three per provider). Any feature endpoint accepts `?provider=&model=`; a model
+**Two platforms.** The catalog (`CATALOG` in `config.py`) groups models by platform and
+family. *Groq* runs open-weight models on its LPUs (OpenAI GPT-OSS and Llama); it cannot
+serve closed models, so Claude only appears under *Direct*, where each maker's own API is
+called (OpenAI, Anthropic, Meta Llama API), with at least three versions per family.
+
+**Choosing a model per request.** The catalog lists the models a client may pick. Any feature endpoint accepts `?provider=&model=`; a model
 alone implies its provider, a provider alone uses its default model. The `ModelRegistry`
 builds each client once and reuses it. `GET /models` reports which models are available
 (their provider key is configured), which is what the dashboard's model picker shows. Only

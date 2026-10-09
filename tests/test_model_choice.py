@@ -212,3 +212,34 @@ def test_cli_provider_and_model_flags(monkeypatch, capsys):
     assert cli.main(["--model", "claude-haiku-5-5", "tips"]) == 0
     assert seen == {"provider": "anthropic", "model": "claude-haiku-5-5"}
     assert "claude-haiku-5-5" in capsys.readouterr().out
+
+
+def test_meta_llama_uses_its_compat_endpoint():
+    s = Settings(_env_file=None, LLAMA_API_KEY="l")
+    chat = build_chat_model(s, "meta")
+    assert isinstance(chat, OpenAICompatibleChat)
+    assert chat.client.base_url.host == "api.llama.com"
+    assert chat.model == "Llama-3.3-70B-Instruct" and chat.temperature == 0.3
+
+
+def test_reasoning_models_get_no_temperature():
+    from tests.test_llm_and_config import fake_client
+
+    s = Settings(_env_file=None, OPENAI_API_KEY="o")
+    assert build_chat_model(s, "openai", "gpt-5.5").temperature is None
+    assert build_chat_model(s, "openai", "gpt-5.4-mini").temperature == 0.3
+
+    client = fake_client()
+    OpenAICompatibleChat(client, "openai", "gpt-5.5", None).complete([])
+    assert "temperature" not in client.chat.completions.kwargs
+
+
+def test_catalog_has_two_platforms_and_three_families(choice_client):
+    client, _ = choice_client
+    models = client.get(f"{P}/models").json()["models"]
+    groq = {m["family"] for m in models if m["platform"] == "groq"}
+    direct = {m["family"] for m in models if m["platform"] == "direct"}
+    assert groq == {"OpenAI", "Llama"}  # Groq serves open-weight models only
+    assert direct == {"OpenAI", "Claude", "Llama"}
+    for family in direct:
+        assert sum(m["family"] == family and m["platform"] == "direct" for m in models) >= 3

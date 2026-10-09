@@ -9,12 +9,12 @@ Parameters:
     Type: String
     Description: >-
       ARN of a Secrets Manager secret holding a JSON object of environment variables, e.g.
-      {"GROQ_API_KEY": "...", "NUTRIPILOT_API_TOKEN": "..."}; add OPENAI_API_KEY and/or
-      ANTHROPIC_API_KEY to offer those models too.
+      {"GROQ_API_KEY": "...", "NUTRIPILOT_API_TOKEN": "..."}; add OPENAI_API_KEY,
+      ANTHROPIC_API_KEY and/or LLAMA_API_KEY to offer those models too.
   Provider:
     Type: String
     Default: groq
-    AllowedValues: [groq, openai, anthropic]
+    AllowedValues: [groq, openai, anthropic, meta]
   Model:
     Type: String
     Default: ""

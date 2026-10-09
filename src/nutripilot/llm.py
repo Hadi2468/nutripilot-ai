@@ -1,6 +1,7 @@
-"""Chat model adapters. Groq and OpenAI both speak the OpenAI Chat Completions protocol, so
-one small client covers both; Claude goes through the Anthropic SDK. The service depends
-only on the `ChatModel` protocol, which is how the tests run offline with a scripted fake."""
+"""Chat model adapters. Groq, OpenAI and the Meta Llama API speak the OpenAI Chat Completions
+protocol, so one small client covers them; Claude goes through the Anthropic SDK. The
+service depends only on the `ChatModel` protocol, which is how the tests run offline with a
+scripted fake."""
 
 from __future__ import annotations
 
@@ -11,7 +12,14 @@ from typing import Any, Protocol
 import anthropic
 import openai
 
-from nutripilot.config import BASE_URLS, DEFAULT_MODELS, KEY_ENV_NAMES, Provider, Settings
+from nutripilot.config import (
+    BASE_URLS,
+    DEFAULT_MODELS,
+    KEY_ENV_NAMES,
+    Provider,
+    Settings,
+    find_spec,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +49,7 @@ class ChatModel(Protocol):
 
 
 class OpenAICompatibleChat:
-    def __init__(self, client: Any, provider: str, model: str, temperature: float):
+    def __init__(self, client: Any, provider: str, model: str, temperature: float | None):
         self.client = client
         self.provider = provider
         self.model = model
@@ -49,18 +57,19 @@ class OpenAICompatibleChat:
 
     def complete(self, messages: list[Message]) -> Completion:
         try:
+            sampling = {} if self.temperature is None else {"temperature": self.temperature}
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=self.temperature,
-                # JSON mode: supported by both providers; the schema itself is in the prompt
-                # and the result is validated with Pydantic.
+                # JSON mode: supported by every provider here; the schema itself is in the
+                # prompt and the result is validated with Pydantic.
                 response_format={"type": "json_object"},
+                **sampling,
             )
         except openai.RateLimitError as exc:
             raise LLMRateLimitError("The LLM provider is rate limiting requests") from exc
         except openai.OpenAIError as exc:
-            logger.warning("LLM call failed: %s", exc.__class__.__name__)
+            logger.warning("LLM call failed: %s: %s", exc.__class__.__name__, exc)
             raise LLMError("The LLM provider is unavailable") from exc
 
         usage = response.usage
@@ -106,7 +115,7 @@ class AnthropicChat:
         except anthropic.RateLimitError as exc:
             raise LLMRateLimitError("The LLM provider is rate limiting requests") from exc
         except anthropic.APIError as exc:
-            logger.warning("LLM call failed: %s", exc.__class__.__name__)
+            logger.warning("LLM call failed: %s: %s", exc.__class__.__name__, exc)
             raise LLMError("The LLM provider is unavailable") from exc
 
         if response.stop_reason == "refusal":
@@ -140,6 +149,7 @@ def build_chat_model(
         timeout=settings.llm_timeout_s,
         max_retries=settings.llm_max_retries,
     )
-    return OpenAICompatibleChat(
-        client, provider, model or DEFAULT_MODELS[provider], settings.temperature
-    )
+    model = model or DEFAULT_MODELS[provider]
+    spec = find_spec(provider, model)
+    temperature = None if spec and not spec.temperature else settings.temperature
+    return OpenAICompatibleChat(client, provider, model, temperature)

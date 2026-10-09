@@ -348,30 +348,40 @@ PAGES = {
 }
 
 
+PLATFORMS = {
+    "groq": "⚡ Groq (fast inference, open models)",
+    "direct": "🌐 Direct (each model maker's own API)",
+}
+PROVIDER_NAMES = {"groq": "Groq", "openai": "OpenAI", "anthropic": "Anthropic", "meta": "Meta"}
+
+
 def model_picker() -> None:
-    """Sidebar model choice; only models whose provider key is configured are offered."""
+    """Sidebar model choice: a platform, then a model grouped by maker. Only models whose
+    provider key is configured on the API are offered."""
+    st.session_state.model_choice = {}
     catalog = fetch_models()
     if not catalog:
         st.sidebar.caption("Model: the API's default")
-        st.session_state.model_choice = {}
         return
-    available = [m for m in catalog["models"] if m["available"]]
-    missing = sorted({m["provider"] for m in catalog["models"] if not m["available"]})
-    if not available:
-        st.sidebar.warning("No LLM provider key is configured on the API.")
-        st.session_state.model_choice = {}
-        return
-    default = catalog["default"]
-    index = next(
-        (
-            i
-            for i, m in enumerate(available)
-            if (m["provider"], m["model"]) == tuple(default.values())
-        ),
-        0,
+
+    platform = st.sidebar.radio(
+        "Platform", list(PLATFORMS), format_func=PLATFORMS.get, key="platform"
     )
+    in_platform = [m for m in catalog["models"] if m["platform"] == platform]
+    available = [m for m in in_platform if m["available"]]
+    missing = sorted({PROVIDER_NAMES[m["provider"]] for m in in_platform if not m["available"]})
+    if not available:
+        st.sidebar.warning("No API key is configured for this platform.")
+        return
+
+    default = (catalog["default"]["provider"], catalog["default"]["model"])
+    index = next((i for i, m in enumerate(available) if (m["provider"], m["model"]) == default), 0)
     choice = st.sidebar.selectbox(
-        "🧠 Model", available, index=index, format_func=lambda m: m["label"]
+        "🧠 Model",
+        available,
+        index=index,
+        format_func=lambda m: f"{m['family']} · {m['label']}",
+        key=f"model_{platform}",
     )
     st.session_state.model_choice = {"provider": choice["provider"], "model": choice["model"]}
     if missing:
@@ -385,6 +395,6 @@ st.sidebar.divider()
 model_picker()
 st.sidebar.divider()
 st.sidebar.caption(f"API: {API_URL}")
-st.sidebar.caption("FastAPI · AWS Lambda · Groq / OpenAI / Claude · Streamlit")
+st.sidebar.caption("FastAPI · AWS Lambda · Groq · OpenAI · Claude · Llama · Streamlit")
 
 PAGES[page]()
