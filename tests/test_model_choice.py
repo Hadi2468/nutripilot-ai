@@ -27,16 +27,30 @@ TIPS = {"tips": [{"tip": "t", "why": "w"}] * 5}
 
 
 class FakeMessages:
+    """Mimics `client.beta.messages.stream(...)` as a context manager."""
+
     def __init__(self, response=None, exc=None):
         self.response = response
         self.exc = exc
         self.kwargs = None
 
-    def create(self, **kwargs):
+    def stream(self, **kwargs):
         self.kwargs = kwargs
         if self.exc:
             raise self.exc
-        return self.response
+        fake = self
+
+        class _Stream:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def get_final_message(self):
+                return fake.response
+
+        return _Stream()
 
 
 def claude_response(stop_reason="end_turn"):
@@ -76,6 +90,21 @@ def test_claude_request_shape_and_text_extraction():
     assert sent["output_config"] == {"effort": "medium"}
     assert "temperature" not in sent  # Claude 5.5 models reject sampling parameters
     assert "fallbacks" not in sent  # Haiku has no server-side fallback
+    assert sent["thinking"] == {"type": "disabled"} and sent["max_tokens"] == 32000
+
+
+def test_thinking_is_off_where_allowed():
+    client, messages = fake_anthropic(response=claude_response())
+    AnthropicChat(client, "claude-sonnet-5-5", "medium").complete(MESSAGES)
+    assert messages.kwargs["thinking"] == {"type": "between_tools"}
+    AnthropicChat(client, "claude-opus-5-5", "low").complete(MESSAGES)
+    assert "thinking" not in messages.kwargs  # Opus always thinks; effort controls depth
+
+
+def test_cut_off_answer_is_an_llm_error():
+    client, _ = fake_anthropic(response=claude_response(stop_reason="max_tokens"))
+    with pytest.raises(LLMError, match="cut off"):
+        AnthropicChat(client, "claude-haiku-5-5", "low").complete(MESSAGES)
 
 
 def test_claude_opus_opts_into_server_side_fallback():

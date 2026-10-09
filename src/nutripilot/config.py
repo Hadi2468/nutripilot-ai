@@ -89,7 +89,8 @@ class Settings(BaseSettings):
     provider: Provider = "groq"
     model: str | None = None  # empty = the provider's default model
     temperature: float = Field(0.3, ge=0, le=2)  # where supported; Claude uses effort
-    claude_effort: Effort = "medium"
+    # Low is enough: the checks in code catch the numbers (Opus can't switch thinking off).
+    claude_effort: Effort = "low"
     # Per LLM call. Claude thinks before answering, so a seven-day plan can take a while;
     # the SAM template lowers this to fit API Gateway's 30 s limit.
     llm_timeout_s: float = 90.0

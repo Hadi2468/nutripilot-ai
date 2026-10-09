@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
 import anthropic
 import openai
@@ -83,14 +83,24 @@ class OpenAICompatibleChat:
 class AnthropicChat:
     """Claude via the Anthropic Messages API.
 
-    Claude 5.5 models think adaptively and reject sampling parameters, so depth is set
-    with `effort` instead of `temperature`. JSON comes from the schema in the system
-    prompt; the service validates and repairs it like any other provider's output.
+    Claude 5.5 models reject sampling parameters, so depth is set with `effort` instead of
+    `temperature`. A seven-day plan is a long, structured answer rather than a reasoning
+    problem, and the checks in code catch the numbers, so thinking is switched off where the
+    model allows it (Haiku: `disabled`, Sonnet: `between_tools`); Opus always thinks, so it
+    runs at the configured effort. Measured on a 2,000 kcal, 4-meal week: Haiku ~15 s,
+    Sonnet ~22 s, Opus at low effort ~26 s; Haiku with thinking on took over 60 s.
+    JSON comes from the schema in the system prompt; the service validates and repairs it
+    like any other provider's output.
     """
 
+    THINKING_OFF: ClassVar[dict[str, dict[str, str]]] = {
+        "claude-haiku-5-5": {"type": "disabled"},
+        "claude-sonnet-5-5": {"type": "between_tools"},
+    }
     # Opus re-runs a request it declines on a fallback model (server side); Haiku has none.
     FALLBACK_MODELS = frozenset({"claude-opus-5-5"})
-    MAX_TOKENS = 16000  # room for adaptive thinking plus a full seven-day plan
+    # Streamed, so a large ceiling cannot hit an HTTP timeout; a week of meals is ~4k tokens.
+    MAX_TOKENS = 32000
 
     def __init__(self, client: Any, model: str, effort: str):
         self.client = client
@@ -98,20 +108,25 @@ class AnthropicChat:
         self.model = model
         self.effort = effort
 
-    def complete(self, messages: list[Message]) -> Completion:
+    def request(self, messages: list[Message]) -> dict[str, Any]:
         system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
-        turns = [m for m in messages if m["role"] != "system"]
         request: dict[str, Any] = {
             "model": self.model,
             "max_tokens": self.MAX_TOKENS,
             "system": system,
-            "messages": turns,
+            "messages": [m for m in messages if m["role"] != "system"],
             "output_config": {"effort": self.effort},
         }
+        if self.model in self.THINKING_OFF:
+            request["thinking"] = self.THINKING_OFF[self.model]
         if self.model in self.FALLBACK_MODELS:
             request |= {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+        return request
+
+    def complete(self, messages: list[Message]) -> Completion:
         try:
-            response = self.client.beta.messages.create(**request)
+            with self.client.beta.messages.stream(**self.request(messages)) as stream:
+                response = stream.get_final_message()
         except anthropic.RateLimitError as exc:
             raise LLMRateLimitError("The LLM provider is rate limiting requests") from exc
         except anthropic.APIError as exc:
@@ -120,6 +135,8 @@ class AnthropicChat:
 
         if response.stop_reason == "refusal":
             raise LLMError("The model declined this request")
+        if response.stop_reason == "max_tokens":
+            raise LLMError("The model's answer was cut off (max_tokens)")
         return Completion(
             content="".join(b.text for b in response.content if b.type == "text"),
             prompt_tokens=response.usage.input_tokens,
