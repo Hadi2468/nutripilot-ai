@@ -19,6 +19,9 @@ anywhere in a dish or its ingredients**. If a check fails, the problems go back 
 for one bounded repair; if it still fails, the API returns **502 instead of an unsafe plan**.
 Totals are summed in code, never trusted from the model.
 
+![NutriPilot AI dashboard: a 2,000 kcal vegetarian week from GPT-5.4 mini, with daily averages, calories per day against the target, and Day 1's meals](assets/dashboard.png)
+*The NutriPilot AI dashboard: pick a platform and model, then get a checked seven-day plan*
+
 ---
 
 ## ✨ Highlights
