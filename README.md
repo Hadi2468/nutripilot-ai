@@ -34,7 +34,7 @@ Totals are summed in code, never trusted from the model.
 | **Serverless** | API Gateway (HTTP API) → Lambda (FastAPI + Mangum), keys in Secrets Manager, JSON logs; one SAM template |
 | **Observable** | Every response carries provider, model, prompt version, latency, tokens and repair count |
 | **Three&nbsp;interfaces,&nbsp;one&nbsp;service** | REST API (bearer auth), `nutripilot` CLI and a Streamlit dashboard share one service layer |
-| **Tested&nbsp;offline** | 89 pytest tests with a scripted fake LLM: no keys, no network, no cost; 98% coverage; CI on every push |
+| **Tested&nbsp;offline** | 91 pytest tests with a scripted fake LLM: no keys, no network, no cost; 98% coverage; CI on every push |
 
 ---
 
